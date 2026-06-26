@@ -1,0 +1,35 @@
+# GalaxyServe application. ArgoCD renders the Helm chart from this repo and syncs
+# it into the galaxyserve namespace. automated + selfHeal is what reverts manual
+# drift (`kubectl edit`) back to git — the headline GitOps demo.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: galaxyserve
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: galaxyops
+  source:
+    repoURL: https://github.com/Archit1706/galaxy-ops
+    targetRevision: master
+    path: helm/galaxyserve
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: galaxyserve
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
