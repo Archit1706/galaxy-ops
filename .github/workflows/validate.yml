@@ -1,0 +1,87 @@
+name: validate
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: helm lint
+        run: helm lint helm/galaxyserve
+
+      - name: Install kubeconform
+        run: |
+          curl -sSLo kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform.tar.gz
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: helm template | kubeconform
+        run: |
+          for vf in values.yaml values-prod.yaml; do
+            echo "== rendering with $vf =="
+            helm template gs helm/galaxyserve -f "helm/galaxyserve/$vf" --namespace galaxyserve \
+              | kubeconform -strict -ignore-missing-schemas -summary -kubernetes-version 1.30.0
+          done
+
+  kustomize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: kustomize build dashboards
+        run: |
+          curl -sSLo kustomize.tar.gz https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz
+          tar xf kustomize.tar.gz && sudo mv kustomize /usr/local/bin/
+          kustomize build monitoring/dashboards > /dev/null
+          echo "dashboards kustomize build OK"
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: terraform fmt
+        run: terraform fmt -recursive -check terraform
+
+      - name: terraform validate (each root)
+        run: |
+          for d in terraform/envs/local terraform/envs/cloud; do
+            echo "== validating $d =="
+            terraform -chdir="$d" init -backend=false -input=false
+            terraform -chdir="$d" validate
+          done
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: tflint
+        run: |
+          tflint --init
+          tflint --chdir=terraform --recursive
+
+  yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: yamllint (relaxed)
+        run: |
+          pip install yamllint
+          yamllint -d "{extends: relaxed, rules: {line-length: disable}}" \
+            argocd monitoring/alerts || true
