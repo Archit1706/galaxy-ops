@@ -1,0 +1,45 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+.terraformrc
+terraform.rc
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
+
+# Kubernetes / Helm
+*.kubeconfig
+kubeconfig
+kubeconfig-*
+charts/*.tgz
+helm/**/charts/
+
+# Secrets (never commit plaintext secrets)
+*.pem
+*.key
+secrets.yaml
+*-secret.yaml
+.env
+.env.*
+
+# k6
+load/results/
+*.k6-summary.json
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs / tmp
+*.log
+tmp/
+.scratch/
