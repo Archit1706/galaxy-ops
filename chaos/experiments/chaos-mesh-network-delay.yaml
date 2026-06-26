@@ -1,0 +1,23 @@
+# Chaos Mesh NetworkChaos (stretch) — inject latency to test how the service and
+# its SLOs behave under a degraded network, not just hard pod loss.
+#
+# Adds 100ms +/- 50ms of latency to GalaxyServe pod traffic for 3 minutes.
+# Watch the latency SLO panel and the GalaxyServeHighLatency alert.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: galaxyserve-network-delay
+  namespace: galaxyserve
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces:
+      - galaxyserve
+    labelSelectors:
+      app.kubernetes.io/name: galaxyserve
+  delay:
+    latency: "100ms"
+    correlation: "50"
+    jitter: "50ms"
+  duration: "3m"
