@@ -1,0 +1,208 @@
+# Default values for the GalaxyServe chart.
+# This file is the single source of truth that ArgoCD syncs from and that CI
+# bumps (image.tag) on every successful build.
+
+# -- Number of replicas when autoscaling is disabled. With the HPA enabled this
+# is only the initial count (the HPA takes over); keep it at/below minReplicas.
+replicaCount: 1
+
+image:
+  # GHCR image published by the galaxy-serve CI (build.yml).
+  repository: ghcr.io/archit1706/galaxyserve
+  # Overrides the image tag whose default is the chart appVersion.
+  # CI rewrites this line on every push to master.
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Secrets for pulling from a private GHCR package, if the package is private.
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Pod-level annotations (e.g. to force a rollout). Prometheus scraping is handled
+# by the ServiceMonitor, not pod annotations.
+podAnnotations: {}
+
+# -- Security context. GalaxyServe's image already runs as uid 1000 (appuser);
+# we enforce non-root + read-only-ish hardening at the platform level too.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false  # app writes prediction logs under /app/data
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+      - ALL
+
+# -- Resource requests/limits. CPU *requests* are mandatory for the HPA to
+# compute utilization — do not remove them.
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+service:
+  type: ClusterIP
+  port: 80
+  # Port the container listens on (uvicorn --port 8000). Named so the
+  # ServiceMonitor can target it by name.
+  targetPort: 8000
+  portName: http
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: galaxyserve.localhost
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# -- Liveness uses /health (is the process alive), readiness uses /ready (is a
+# model loaded and able to serve). Keeping traffic off un-ready pods is what
+# makes rolling deploys and chaos recovery zero-downtime.
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 20
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# startupProbe gives a slow model load time before liveness kicks in.
+startupProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  periodSeconds: 10
+  failureThreshold: 30  # up to ~5 min to load a model
+
+# -- Rolling update tuned for zero downtime: never take a pod down before its
+# replacement is Ready.
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+
+# -- Horizontal Pod Autoscaler. Scales on CPU by default; req/s via the
+# prometheus-adapter custom metric is wired as a (disabled) stretch goal.
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 0  # 0 = disabled
+  # Custom metric scaling (requires prometheus-adapter to expose this metric).
+  customMetric:
+    enabled: false
+    name: galaxyserve_requests_per_second
+    averageValue: "30"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 120
+    scaleUp:
+      stabilizationWindowSeconds: 30
+
+# -- PodDisruptionBudget keeps at least one pod serving during voluntary
+# disruptions (node drains, chaos evictions).
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# -- ServiceMonitor for kube-prometheus-stack to scrape /metrics.
+serviceMonitor:
+  enabled: true
+  # Must match the kube-prometheus-stack release's serviceMonitorSelector.
+  labels:
+    release: kps
+  interval: 15s
+  scrapeTimeout: 10s
+  path: /metrics
+
+# -- PrometheusRule with SLO burn-rate + reliability alerts. Mirrors
+# monitoring/alerts/slo.yaml so the rules deploy with the app.
+prometheusRule:
+  enabled: true
+  labels:
+    release: kps
+  slo:
+    availabilityObjective: 0.999   # 99.9%
+    latencyBucketSeconds: 0.5      # 500ms p95 target for /predict
+
+# -- NetworkPolicy: default-deny ingress except from the ingress controller and
+# Prometheus; allow DNS + (optional) MLflow egress.
+networkPolicy:
+  enabled: true
+  ingressNamespaceLabels:
+    # nginx ingress controller namespace label
+    kubernetes.io/metadata.name: ingress-nginx
+  monitoringNamespaceLabels:
+    kubernetes.io/metadata.name: monitoring
+  # Allow egress to these ports (DNS + MLflow registry). Empty = allow all egress.
+  egressPorts:
+    - 53     # DNS
+    - 5000   # MLflow
+
+# -- Minimal RBAC. The app itself needs no Kubernetes API access; this Role is
+# scoped to read its own config/secrets only, demonstrating least privilege.
+rbac:
+  create: true
+
+# -- GalaxyServe application configuration, surfaced as GALAXYSERVE_* env vars.
+galaxyserve:
+  logLevel: info
+  device: cpu
+  maxBatchSize: 32
+  monitoringEnabled: true
+  # Model source: either mount weights (weights.enabled) or load from an MLflow
+  # registry (registry.enabled). Without either, /ready stays 503 by design.
+  weights:
+    enabled: false
+    # Path inside the container the app reads weights from.
+    path: /app/models/resnet18_galaxy_best.pth
+    # Mount an existing PVC containing the weights file.
+    persistentVolumeClaim: ""
+  registry:
+    enabled: false
+    mlflowTrackingUri: "http://mlflow.galaxyserve.svc.cluster.local:5000"
+    modelName: galaxy-morphology-resnet18
+    stage: Production
+  # Extra raw env vars (advanced).
+  extraEnv: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# -- Spread replicas across nodes for resilience (best-effort).
+topologySpreadConstraints: []
