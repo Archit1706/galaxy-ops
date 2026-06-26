@@ -1,0 +1,25 @@
+# Grafana dashboards. Syncs monitoring/dashboards (a kustomize overlay that wraps
+# the dashboard JSON in a labeled ConfigMap) so the Grafana sidecar auto-imports
+# the GalaxyServe Overview dashboard.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana-dashboards
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: galaxyops
+  source:
+    repoURL: https://github.com/Archit1706/galaxy-ops
+    targetRevision: master
+    path: monitoring/dashboards
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
