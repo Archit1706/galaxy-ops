@@ -1,0 +1,18 @@
+# Promtail — the log shipper that tails pod logs on every node and pushes them to
+# Loki. Without it, Loki has no data. Runs as a DaemonSet.
+
+config:
+  clients:
+    - url: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
+
+# Tolerate control-plane taints so logs from every node are collected.
+tolerations:
+  - effect: NoSchedule
+    operator: Exists
