@@ -1,0 +1,37 @@
+# AppProject scopes what the GalaxyOps applications are allowed to deploy, from
+# where, and to which namespaces — a guardrail so a bad manifest can't, say,
+# touch kube-system. RBAC at the GitOps layer.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: galaxyops
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: GalaxyOps platform — GalaxyServe app plus its observability stack.
+
+  # Only this repo and the chart repos the platform depends on.
+  sourceRepos:
+    - https://github.com/Archit1706/galaxy-ops
+    - https://github.com/Archit1706/galaxy-ops.git
+    - https://prometheus-community.github.io/helm-charts
+    - https://grafana.github.io/helm-charts
+
+  # Only these namespaces in the local cluster.
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: galaxyserve
+    - server: https://kubernetes.default.svc
+      namespace: monitoring
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+
+  # Cluster-scoped resources the stack legitimately needs (CRDs, RBAC, etc.).
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
