@@ -1,0 +1,28 @@
+# App-of-apps root. Points ArgoCD at the argocd/apps directory; every Application
+# manifest in there (including this one) becomes a managed child app. This is the
+# single object you apply by hand once — after that, git is the source of truth
+# and ArgoCD reconciles everything, including itself.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: galaxyops
+  source:
+    repoURL: https://github.com/Archit1706/galaxy-ops
+    targetRevision: master
+    path: argocd/apps
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
