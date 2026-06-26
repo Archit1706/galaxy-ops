@@ -1,0 +1,18 @@
+# Wraps the dashboard JSON in a ConfigMap labeled grafana_dashboard="1" so the
+# Grafana sidecar imports it — without duplicating the JSON into YAML. ArgoCD
+# renders this with its built-in kustomize support.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: galaxyops
+
+configMapGenerator:
+  - name: galaxyserve-dashboards
+    files:
+      - galaxyserve-overview.json
