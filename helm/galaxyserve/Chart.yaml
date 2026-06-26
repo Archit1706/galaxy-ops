@@ -1,0 +1,23 @@
+apiVersion: v2
+name: galaxyserve
+description: Helm chart for the GalaxyServe ML inference service on the GalaxyOps platform.
+type: application
+
+# version  = chart version (bump on chart template changes)
+# appVersion = upstream GalaxyServe app version this chart targets
+version: 0.1.0
+appVersion: "0.1.0"
+
+home: https://github.com/Archit1706/galaxy-ops
+sources:
+  - https://github.com/Archit1706/galaxy-ops
+  - https://github.com/Archit1706/galaxy-serve
+
+maintainers:
+  - name: Archit Rathod
+
+keywords:
+  - mlops
+  - inference
+  - kubernetes
+  - prometheus
