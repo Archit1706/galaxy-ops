@@ -1,0 +1,96 @@
+# Standalone PrometheusRule with the GalaxyServe SLO + reliability alerts.
+#
+# This mirrors helm/galaxyserve/templates/prometheusrule.yaml. When GalaxyServe is
+# deployed via the Helm chart, that templated rule is canonical and you do NOT
+# need to apply this file too (doing so would create duplicate, identical alerts).
+# Apply this directly only if you run GalaxyServe without the chart:
+#   kubectl apply -n monitoring -f monitoring/alerts/slo.yaml
+#
+# Budget = 1 - 0.999 = 0.001 (99.9% availability SLO).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: galaxyserve-slo
+  namespace: monitoring
+  labels:
+    release: kps
+    app.kubernetes.io/part-of: galaxyops
+spec:
+  groups:
+    - name: galaxyserve.slo
+      rules:
+        - alert: GalaxyServeErrorBudgetBurnFast
+          expr: |
+            (
+              sum(rate(galaxyserve_requests_total{status=~"5.."}[1h]))
+              / sum(rate(galaxyserve_requests_total[1h]))
+            ) > (0.0144)
+            and
+            (
+              sum(rate(galaxyserve_requests_total{status=~"5.."}[5m]))
+              / sum(rate(galaxyserve_requests_total[5m]))
+            ) > (0.0144)
+          for: 2m
+          labels:
+            severity: critical
+            slo: availability
+          annotations:
+            summary: "GalaxyServe is burning its error budget fast (14.4x)"
+            description: "5xx ratio over 1h and 5m exceeds 14.4x the 99.9% SLO budget."
+            runbook: "https://github.com/Archit1706/galaxy-ops/blob/master/docs/runbook.md#alert-galaxyserveerrorbudgetburnfast-page"
+
+        - alert: GalaxyServeErrorBudgetBurnSlow
+          expr: |
+            (
+              sum(rate(galaxyserve_requests_total{status=~"5.."}[6h]))
+              / sum(rate(galaxyserve_requests_total[6h]))
+            ) > (0.006)
+            and
+            (
+              sum(rate(galaxyserve_requests_total{status=~"5.."}[30m]))
+              / sum(rate(galaxyserve_requests_total[30m]))
+            ) > (0.006)
+          for: 15m
+          labels:
+            severity: critical
+            slo: availability
+          annotations:
+            summary: "GalaxyServe is burning its error budget (6x sustained)"
+            description: "5xx ratio over 6h and 30m exceeds 6x the SLO budget."
+            runbook: "https://github.com/Archit1706/galaxy-ops/blob/master/docs/runbook.md#alert-galaxyserveerrorbudgetburnslow-page"
+
+        - alert: GalaxyServeHighLatency
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum(rate(galaxyserve_request_latency_seconds_bucket{endpoint="/predict"}[5m])) by (le)
+            ) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            slo: latency
+          annotations:
+            summary: "GalaxyServe p95 /predict latency above 0.5s"
+            description: "p95 latency on /predict has exceeded the 500ms SLO for 10m."
+            runbook: "https://github.com/Archit1706/galaxy-ops/blob/master/docs/runbook.md#alert-galaxyservehighlatency"
+
+        - alert: GalaxyServeCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="galaxyserve", container="galaxyserve"}[10m]) > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "GalaxyServe pod is restarting repeatedly"
+            description: "A GalaxyServe container has restarted more than twice in 10m."
+            runbook: "https://github.com/Archit1706/galaxy-ops/blob/master/docs/runbook.md#alert-galaxyservecrashlooping"
+
+        - alert: GalaxyServeAbsent
+          expr: absent(up{job=~".*galaxyserve.*"} == 1)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "GalaxyServe scrape target is absent"
+            description: "Prometheus has no healthy GalaxyServe target."
+            runbook: "https://github.com/Archit1706/galaxy-ops/blob/master/docs/runbook.md#alert-galaxyserveabsent"
