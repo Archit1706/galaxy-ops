@@ -10,8 +10,6 @@
 
 GalaxyServe already ships a container that exposes `/health`, `/ready`, and a Prometheus `/metrics` endpoint. GalaxyOps wraps that service in the infrastructure a real platform team would run it on: Terraform-provisioned Kubernetes, Helm packaging, ArgoCD GitOps, a kube-prometheus-stack observability layer with SLO alerting, HPA autoscaling, PodDisruptionBudgets, NetworkPolicies, and a CI pipeline that security-scans and promotes images via git.
 
-> The one-line story: **I build ML services (GalaxyServe) and run them on production-grade Kubernetes infrastructure (GalaxyOps).**
-
 ---
 
 ## Architecture
@@ -128,10 +126,10 @@ Grafana / ArgoCD / Prometheus UIs are exposed via port-forward — see [docs/run
 
 ---
 
-## Demos that generate the resume metrics
+## Demos & key metrics
 
-Each row is a runnable demo; run it to capture the number for your screenshot/GIF.
-The "Target" column is the SLO/behaviour the platform is configured to hold.
+Each row is a runnable demo. The "Target" column is the SLO/behaviour the platform
+is configured to hold; run the demo to capture the live number.
 
 | Demo | Command | Target |
 |---|---|---|
@@ -184,19 +182,10 @@ dashboard JSON is valid and the kustomize generator labels it `grafana_dashboard
 
 ---
 
-## Status
+## Possible extensions
 
-Built phase by phase (see commit history):
-
-- [x] Phase 0 — Cluster + app, ingress + `/health`·`/ready` probes
-- [x] Phase 1 — Helm chart (values-driven, default + prod)
-- [x] Phase 2 — Terraform IaC: reusable platform module, k3d **and** EKS modules, local/cloud env roots
-- [x] Phase 3 — GitOps / ArgoCD app-of-apps with prune + self-heal
-- [x] Phase 4 — Observability + SLOs: kube-prometheus-stack + Loki + Promtail + auto-imported Grafana dashboard
-- [x] Phase 5 — HPA autoscaling + PDB + zero-downtime rollout (`maxUnavailable: 0`) + k6
-- [x] Phase 6 — Chaos (pod-kill + Chaos Mesh) + security (NetworkPolicy/RBAC/non-root) + CI (Trivy gate + validate)
-
-**Stretch:** real EKS deploy · Argo Rollouts canary · sealed-secrets · Tempo tracing · kubecost.
+Argo Rollouts canary / progressive delivery · sealed-secrets or external-secrets ·
+Tempo tracing · kubecost · prometheus-adapter for request-rate-based autoscaling.
 
 ---
 
