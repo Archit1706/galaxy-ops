@@ -1,0 +1,49 @@
+{{- if .Values.networkPolicy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "galaxyserve.fullname" . }}
+  labels:
+    {{- include "galaxyserve.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "galaxyserve.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow HTTP from the nginx ingress controller namespace.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.ingressNamespaceLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+    # Allow scraping from the monitoring namespace (Prometheus).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.monitoringNamespaceLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+  egress:
+    {{- if .Values.networkPolicy.egressPorts }}
+    - to: []
+      ports:
+        {{- range .Values.networkPolicy.egressPorts }}
+        - port: {{ . }}
+          protocol: TCP
+        {{- end }}
+    # DNS over UDP as well.
+    - to: []
+      ports:
+        - port: 53
+          protocol: UDP
+    {{- else }}
+    # No egress restriction configured — allow all.
+    - {}
+    {{- end }}
+{{- end }}
