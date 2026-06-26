@@ -14,26 +14,7 @@ GalaxyServe already ships a container that exposes `/health`, `/ready`, and a Pr
 
 ## Architecture
 
-```
-  galaxy-serve repo ─► CI (build.yml): build image ─► push to GHCR
-                                        │  repository_dispatch (new tag)
-                                        ▼
-  galaxy-ops repo  ─► CI (ci.yml): Trivy scan the image ─► bump Helm tag, commit
-                                        │  Helm values = single source of truth
-                                        ▼
-                                  ArgoCD (auto-sync, self-heal)
-                                        ▼
-   ┌─────────────────── Kubernetes cluster (k3d local / EKS) ───────────────────┐
-   │  nginx Ingress ─► GalaxyServe Deployment  ◄─ HPA (scales 1→10 on load)      │
-   │      ├─ liveness /health · readiness /ready probes                          │
-   │      ├─ resource requests/limits · PodDisruptionBudget · rolling update     │
-   │      └─ /metrics ─► scraped by Prometheus (ServiceMonitor)                  │
-   │  Observability:  Prometheus + Grafana + Loki + Promtail + Alertmanager      │
-   │  Security:       RBAC · NetworkPolicies · non-root · Trivy-scanned images   │
-   └────────────────────────────────────────────────────────────────────────────┘
-        ▲ chaos: kill pods ─► watch self-heal + SLO hold
-        ▲ load:  k6 ─────────► watch HPA scale out, zero-downtime deploy
-```
+![GalaxyOps architecture](docs/architecture.png)
 
 **Flow:** the GalaxyServe repo builds and pushes the image to GHCR → GalaxyOps CI security-scans that image with Trivy and, on a pass, bumps the Helm image tag in git → ArgoCD sees the commit and syncs the cluster → the rollout is zero-downtime → Prometheus scrapes metrics, Grafana shows SLOs, Alertmanager fires on error-budget burn → kill a pod and it self-heals; pour load on it and the HPA scales out.
 
