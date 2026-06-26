@@ -1,0 +1,26 @@
+# Chaos Mesh PodChaos (stretch) — the declarative version of pod-kill.sh.
+#
+# Requires Chaos Mesh installed in the cluster:
+#   helm repo add chaos-mesh https://charts.chaos-mesh.org
+#   helm install chaos-mesh chaos-mesh/chaos-mesh -n chaos-mesh --create-namespace \
+#     --set chaosDaemon.runtime=containerd --set chaosDaemon.socketPath=/run/k3s/containerd/containerd.sock
+#
+# Apply: kubectl apply -f chaos/experiments/chaos-mesh-podkill.yaml
+# This kills one GalaxyServe pod every 15s for 5 minutes, then stops.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: galaxyserve-pod-kill
+  namespace: galaxyserve
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - galaxyserve
+    labelSelectors:
+      app.kubernetes.io/name: galaxyserve
+  # Re-run on a schedule for a bounded window.
+  scheduler:
+    cron: "@every 15s"
+  duration: "5m"
