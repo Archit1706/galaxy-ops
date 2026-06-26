@@ -1,0 +1,104 @@
+# kube-prometheus-stack values. Deployed by argocd/apps/monitoring.yaml as release
+# "kps". Tuned for a local k3d cluster (small footprint), with Prometheus set to
+# discover the ServiceMonitor and PrometheusRule that the GalaxyServe chart emits.
+
+fullnameOverride: kps
+
+# ---- Prometheus ----
+prometheus:
+  prometheusSpec:
+    # Discover ServiceMonitors / PodMonitors / Rules in ALL namespaces regardless
+    # of the release label, so GalaxyServe's objects are picked up no matter where
+    # they live. (Defaults restrict selection to release-labeled objects.)
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+
+    retention: 7d
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+    # Local demo: ephemeral storage. Add a volumeClaimTemplate for persistence.
+    storageSpec: {}
+
+# ---- Alertmanager ----
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ["alertname", "namespace"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: "default"
+      routes:
+        - matchers:
+            - severity = "critical"
+          receiver: "default"
+          repeat_interval: 1h
+    receivers:
+      # Wire a real receiver (Slack/PagerDuty/webhook) here in production.
+      - name: "default"
+    inhibit_rules:
+      # A firing critical alert silences warnings for the same alertname.
+      - source_matchers: ["severity = critical"]
+        target_matchers: ["severity = warning"]
+        equal: ["alertname", "namespace"]
+
+# ---- Grafana ----
+grafana:
+  adminPassword: prom-operator
+  defaultDashboardsTimezone: browser
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # The sidecar imports any ConfigMap labeled grafana_dashboard="1" (in any
+  # namespace) as a dashboard — that's how monitoring/dashboards lands in Grafana.
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+      folder: /tmp/dashboards
+      provider:
+        foldersFromFilesStructure: true
+    datasources:
+      enabled: true
+
+  # Auto-wire Loki as a datasource so logs are queryable next to metrics.
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      access: proxy
+      url: http://loki-gateway.monitoring.svc.cluster.local
+      jsonData:
+        maxLines: 1000
+
+# Keep the footprint light on a laptop: drop components not needed for the demo.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
