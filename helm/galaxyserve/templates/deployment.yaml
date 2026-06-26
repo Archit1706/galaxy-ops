@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "galaxyserve.fullname" . }}
+  labels:
+    {{- include "galaxyserve.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  strategy:
+    {{- toYaml .Values.strategy | nindent 4 }}
+  selector:
+    matchLabels:
+      {{- include "galaxyserve.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "galaxyserve.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "galaxyserve.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: galaxyserve
+          image: {{ include "galaxyserve.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: {{ .Values.service.portName }}
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          env:
+            - name: GALAXYSERVE_LOG_LEVEL
+              value: {{ .Values.galaxyserve.logLevel | quote }}
+            - name: GALAXYSERVE_DEVICE
+              value: {{ .Values.galaxyserve.device | quote }}
+            - name: GALAXYSERVE_MAX_BATCH_SIZE
+              value: {{ .Values.galaxyserve.maxBatchSize | quote }}
+            - name: GALAXYSERVE_MONITORING_ENABLED
+              value: {{ .Values.galaxyserve.monitoringEnabled | quote }}
+            {{- if .Values.galaxyserve.weights.enabled }}
+            - name: GALAXYSERVE_WEIGHTS_PATH
+              value: {{ .Values.galaxyserve.weights.path | quote }}
+            - name: GALAXYSERVE_REQUIRE_WEIGHTS
+              value: "true"
+            {{- end }}
+            {{- if .Values.galaxyserve.registry.enabled }}
+            - name: GALAXYSERVE_USE_REGISTRY
+              value: "true"
+            - name: GALAXYSERVE_MLFLOW_TRACKING_URI
+              value: {{ .Values.galaxyserve.registry.mlflowTrackingUri | quote }}
+            - name: MLFLOW_TRACKING_URI
+              value: {{ .Values.galaxyserve.registry.mlflowTrackingUri | quote }}
+            - name: GALAXYSERVE_REGISTRY_MODEL_NAME
+              value: {{ .Values.galaxyserve.registry.modelName | quote }}
+            - name: GALAXYSERVE_REGISTRY_STAGE
+              value: {{ .Values.galaxyserve.registry.stage | quote }}
+            {{- end }}
+            {{- with .Values.galaxyserve.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if .Values.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              {{- toYaml .Values.startupProbe.httpGet | nindent 14 }}
+            periodSeconds: {{ .Values.startupProbe.periodSeconds }}
+            failureThreshold: {{ .Values.startupProbe.failureThreshold }}
+          {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.galaxyserve.weights.enabled }}
+          volumeMounts:
+            - name: model-weights
+              mountPath: {{ dir .Values.galaxyserve.weights.path }}
+              readOnly: true
+          {{- end }}
+      {{- if .Values.galaxyserve.weights.enabled }}
+      volumes:
+        - name: model-weights
+          persistentVolumeClaim:
+            claimName: {{ .Values.galaxyserve.weights.persistentVolumeClaim }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
