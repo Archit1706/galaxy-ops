@@ -1,0 +1,29 @@
+GalaxyServe has been deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Image: {{ include "galaxyserve.image" . }}
+
+1. Check rollout status:
+   kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "galaxyserve.fullname" . }}
+
+2. Probe endpoints:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+   curl -H "Host: {{ .host }}" http://localhost:8080/health
+   curl -H "Host: {{ .host }}" http://localhost:8080/ready
+{{- end }}
+{{- else }}
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "galaxyserve.fullname" . }} 8000:{{ .Values.service.port }}
+   curl http://localhost:8000/health
+{{- end }}
+
+{{- if .Values.autoscaling.enabled }}
+
+3. Autoscaling is ENABLED ({{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }} replicas, target {{ .Values.autoscaling.targetCPUUtilizationPercentage }}% CPU):
+   kubectl -n {{ .Release.Namespace }} get hpa {{ include "galaxyserve.fullname" . }} -w
+{{- end }}
+
+{{- if not (or .Values.galaxyserve.weights.enabled .Values.galaxyserve.registry.enabled) }}
+
+WARNING: No model source configured (weights.enabled and registry.enabled are both false).
+/ready will return 503 until a model is loaded. See values.yaml -> galaxyserve.weights / galaxyserve.registry.
+{{- end }}
