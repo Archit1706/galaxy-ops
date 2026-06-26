@@ -1,0 +1,130 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "title": "GalaxyServe Overview",
+  "uid": "galaxyserve-overview",
+  "tags": ["galaxyops", "galaxyserve", "slo"],
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Prometheus",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Availability (5m)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.99 }, { "color": "green", "value": 0.999 } ] } } },
+      "targets": [
+        { "refId": "A", "expr": "1 - (sum(rate(galaxyserve_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(galaxyserve_requests_total[5m])), 1))" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Requests/sec",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "thresholds" } } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(galaxyserve_requests_total[1m]))" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Ready replicas",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "none", "color": { "mode": "thresholds" }, "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } } },
+      "targets": [
+        { "refId": "A", "expr": "count(galaxyserve_model_loaded == 1) or vector(0)" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Model loaded",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "0": { "text": "NO", "color": "red" }, "1": { "text": "YES", "color": "green" } } } ] } },
+      "targets": [
+        { "refId": "A", "expr": "max(galaxyserve_model_loaded)" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Request rate by endpoint",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10, "stacking": { "mode": "normal" } } } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(galaxyserve_requests_total[1m])) by (endpoint)", "legendFormat": "{{endpoint}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p50 / p95 / p99 — /predict",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 5 }, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 0.5 } ] } } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum(rate(galaxyserve_request_latency_seconds_bucket{endpoint=\"/predict\"}[5m])) by (le))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum(rate(galaxyserve_request_latency_seconds_bucket{endpoint=\"/predict\"}[5m])) by (le))", "legendFormat": "p95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum(rate(galaxyserve_request_latency_seconds_bucket{endpoint=\"/predict\"}[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error rate by status",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 20, "stacking": { "mode": "normal" } } } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(galaxyserve_requests_total{status=~\"5..\"}[1m])) by (status)", "legendFormat": "{{status}}" },
+        { "refId": "B", "expr": "sum(rate(galaxyserve_errors_total[1m])) by (type)", "legendFormat": "err: {{type}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Pod count vs HPA, CPU utilization",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"galaxyserve\", container=\"galaxyserve\"}[2m]))", "legendFormat": "cpu cores used" },
+        { "refId": "B", "expr": "count(galaxyserve_model_loaded) or vector(0)", "legendFormat": "pods scraped" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Predictions by class",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(galaxyserve_predictions_total[5m])) by (label)", "legendFormat": "{{label}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "In-progress requests",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        { "refId": "A", "expr": "sum(galaxyserve_requests_in_progress) by (endpoint)", "legendFormat": "{{endpoint}}" }
+      ]
+    }
+  ]
+}
