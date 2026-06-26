@@ -1,0 +1,74 @@
+name: CD — scan & promote image
+
+# GalaxyServe's own repo builds and pushes the container to GHCR (its build.yml).
+# This workflow is the GitOps promotion half of the loop: it security-scans a
+# published image with Trivy and, if it passes, bumps the Helm image tag in git.
+# ArgoCD sees the commit and rolls the new version out — no kubectl, no manual deploy.
+#
+# Triggers:
+#   * repository_dispatch from galaxy-serve after a successful build
+#       (event type: galaxyserve-image, client_payload.tag = <sha>)
+#   * manual run with an explicit tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to scan and promote (e.g. a commit SHA, or 'latest')"
+        required: true
+        default: "latest"
+  repository_dispatch:
+    types: [galaxyserve-image]
+
+permissions:
+  contents: write
+
+env:
+  IMAGE: ghcr.io/archit1706/galaxyserve
+
+jobs:
+  scan-and-promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "tag=${{ github.event.client_payload.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trivy scan (gate on CRITICAL)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Bump Helm image tag
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          yq -i '.image.tag = strenv(TAG)' helm/galaxyserve/values.yaml
+          echo "values.yaml now:"
+          yq '.image' helm/galaxyserve/values.yaml
+
+      - name: Commit & push promotion
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- helm/galaxyserve/values.yaml; then
+            echo "Tag unchanged; nothing to promote."
+            exit 0
+          fi
+          git add helm/galaxyserve/values.yaml
+          git commit -m "Promote galaxyserve image to ${TAG}"
+          git push origin HEAD:master
