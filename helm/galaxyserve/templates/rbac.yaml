@@ -1,0 +1,30 @@
+{{- if .Values.rbac.create -}}
+# Least-privilege Role: the GalaxyServe app does not call the Kubernetes API, so
+# this Role grants nothing beyond read access to its own ConfigMaps. It exists to
+# demonstrate scoped RBAC rather than relying on the default ServiceAccount.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "galaxyserve.fullname" . }}
+  labels:
+    {{- include "galaxyserve.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "galaxyserve.fullname" . }}
+  labels:
+    {{- include "galaxyserve.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "galaxyserve.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "galaxyserve.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
